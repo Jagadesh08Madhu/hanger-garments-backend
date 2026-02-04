@@ -132,8 +132,7 @@ class ProductService {
         };
     }
 
-
-        // services/productService.js
+    // services/productService.js
     async calculateQuantityPrice(productId, quantity, variantId = null, isWholesaleUser = false) {
         try {
             
