@@ -171,4 +171,4 @@ router.post('/admin/:productId/variants/:variantId/images', auth, authorize('ADM
 router.delete('/admin/:productId/variants/:variantId/images/:imageId', auth, authorize('ADMIN'), removeVariantImage);
 router.patch('/admin/:productId/variants/:variantId/images/:imageId/primary', auth, authorize('ADMIN'), setPrimaryVariantImage);
 
-export default router;
+export default router;  
