@@ -3,12 +3,12 @@ import logger from '../utils/logger.js';
 import s3UploadService from './s3UploadService.js';
 
 class ProductService {
-    
-    async getAllProducts({ 
-        page = 1, 
-        limit = 10, 
-        categoryId, 
-        subcategoryId, 
+
+    async getAllProducts({
+        page = 1,
+        limit = 10,
+        categoryId,
+        subcategoryId,
         status,
         search,
         minPrice,
@@ -16,22 +16,22 @@ class ProductService {
         includeVariants = true
     }) {
         const skip = (page - 1) * limit;
-        
+
         const where = {};
-        
+
         if (categoryId) {
             where.categoryId = categoryId;
         }
-        
+
         if (subcategoryId) {
             where.subcategoryId = subcategoryId;
         }
-        
+
         // FIX: Convert status to uppercase to match Prisma enum
         if (status) {
             where.status = status.toUpperCase(); // Convert "inactive" to "INACTIVE"
         }
-        
+
         if (search) {
             where.OR = [
                 { name: { contains: search, mode: 'insensitive' } },
@@ -39,7 +39,7 @@ class ProductService {
                 { productCode: { contains: search, mode: 'insensitive' } }
             ];
         }
-        
+
         if (minPrice !== undefined || maxPrice !== undefined) {
             where.OR = [
                 {
@@ -56,7 +56,7 @@ class ProductService {
                 }
             ];
         }
-        
+
         // Rest of your code remains the same...
         const include = {
             category: {
@@ -93,7 +93,7 @@ class ProductService {
                 }
             }
         };
-        
+
         const [products, total] = await Promise.all([
             prisma.product.findMany({
                 where,
@@ -106,21 +106,21 @@ class ProductService {
             }),
             prisma.product.count({ where })
         ]);
-        
+
         // Calculate average ratings
         const productsWithAvgRating = products.map(product => {
             const ratings = product.ratings;
-            const avgRating = ratings.length > 0 
-                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
+            const avgRating = ratings.length > 0
+                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
                 : 0;
-            
+
             return {
                 ...product,
                 avgRating: Math.round(avgRating * 10) / 10,
                 totalRatings: ratings.length
             };
         });
-        
+
         return {
             products: productsWithAvgRating,
             pagination: {
@@ -135,15 +135,15 @@ class ProductService {
     // services/productService.js
     async calculateQuantityPrice(productId, quantity, variantId = null, isWholesaleUser = false) {
         try {
-            
+
             if (!productId || quantity < 1) {
                 throw new Error('Valid product ID and quantity are required');
             }
 
             // First, check if product exists with basic query
             const product = await prisma.product.findUnique({
-                where: { 
-                    id: productId 
+                where: {
+                    id: productId
                 },
                 select: {
                     id: true,
@@ -163,8 +163,8 @@ class ProductService {
             let variant = null;
             if (variantId) {
                 variant = await prisma.variant.findUnique({
-                    where: { 
-                        id: variantId 
+                    where: {
+                        id: variantId
                     },
                     select: {
                         id: true,
@@ -176,14 +176,14 @@ class ProductService {
 
             // DETERMINE BASE PRICE BASED ON USER TYPE
             let baseUnitPrice;
-            
+
             if (isWholesaleUser) {
                 // FOR WHOLESALE USERS: Use wholesale price ONLY
                 // Priority:
                 // 1. Variant wholesale price
                 // 2. Product wholesale price
                 // 3. If no wholesale price, use normal price (NOT offer price)
-                
+
                 if (variant?.wholesalePrice !== null && variant?.wholesalePrice !== undefined) {
                     baseUnitPrice = Number(variant.wholesalePrice);
                 } else if (product.wholesalePrice !== null && product.wholesalePrice !== undefined) {
@@ -198,7 +198,7 @@ class ProductService {
                 // 1. Variant price
                 // 2. Product offer price (if available)
                 // 3. Product normal price
-                
+
                 if (variant?.price !== null && variant?.price !== undefined) {
                     baseUnitPrice = Number(variant.price);
                 } else {
@@ -208,7 +208,7 @@ class ProductService {
 
             // Calculate original total based on base price
             const originalTotal = baseUnitPrice * quantity;
-            
+
             // If no subcategory, return regular pricing
             if (!product.subcategoryId) {
                 return {
@@ -225,12 +225,12 @@ class ProductService {
 
             // Get quantity prices for the subcategory
             const quantityPrices = await prisma.subcategoryQuantityPrice.findMany({
-                where: { 
+                where: {
                     subcategoryId: product.subcategoryId,
                     isActive: true,
                     quantity: { lte: quantity } // Only offers where required quantity <= requested quantity
                 },
-                orderBy: { 
+                orderBy: {
                     quantity: 'desc' // Get highest applicable quantity first
                 }
             });
@@ -268,7 +268,7 @@ class ProductService {
             }
 
             const totalSavings = appliedDiscount ? appliedDiscount.discountAmount : 0;
-            
+
             let message = isWholesaleUser ? 'Wholesale price applied' : 'No quantity discount available';
             if (appliedDiscount) {
                 if (appliedDiscount.priceType === 'PERCENTAGE') {
@@ -300,83 +300,83 @@ class ProductService {
 
     async getProductsWithQuantityOffers(subcategoryId, limit = 10) {
         const subcategory = await prisma.subcategory.findUnique({
-        where: { id: subcategoryId },
-        include: {
-            quantityPrices: {
-            where: { isActive: true },
-            orderBy: { quantity: 'asc' }
+            where: { id: subcategoryId },
+            include: {
+                quantityPrices: {
+                    where: { isActive: true },
+                    orderBy: { quantity: 'asc' }
+                }
             }
-        }
         });
 
         if (!subcategory) {
-        throw new Error('Subcategory not found');
+            throw new Error('Subcategory not found');
         }
 
         // Get all active products in this subcategory
         const products = await prisma.product.findMany({
-        where: {
-            subcategoryId,
-            status: 'ACTIVE'
-        },
-        include: {
-            category: {
-            select: {
-                id: true,
-                name: true,
-                image: true
-            }
-            },
-            subcategory: {
-            select: {
-                id: true,
-                name: true,
-                image: true
-            }
-            },
-            variants: {
-            include: {
-                variantImages: {
-                where: { isPrimary: true },
-                take: 1
-                }
-            }
-            },
-            ratings: {
             where: {
-                isApproved: true
+                subcategoryId,
+                status: 'ACTIVE'
             },
-            select: {
-                rating: true
-            }
-            }
-        },
-        take: limit
+            include: {
+                category: {
+                    select: {
+                        id: true,
+                        name: true,
+                        image: true
+                    }
+                },
+                subcategory: {
+                    select: {
+                        id: true,
+                        name: true,
+                        image: true
+                    }
+                },
+                variants: {
+                    include: {
+                        variantImages: {
+                            where: { isPrimary: true },
+                            take: 1
+                        }
+                    }
+                },
+                ratings: {
+                    where: {
+                        isApproved: true
+                    },
+                    select: {
+                        rating: true
+                    }
+                }
+            },
+            take: limit
         });
 
         // Add quantity pricing info to each product
         const productsWithOffers = products.map(product => {
-        const ratings = product.ratings;
-        const avgRating = ratings.length > 0 
-            ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
-            : 0;
+            const ratings = product.ratings;
+            const avgRating = ratings.length > 0
+                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
+                : 0;
 
-        return {
-            ...product,
-            avgRating: Math.round(avgRating * 10) / 10,
-            totalRatings: ratings.length,
-            quantityOffers: subcategory.quantityPrices,
-            hasQuantityPricing: subcategory.quantityPrices.length > 0
-        };
+            return {
+                ...product,
+                avgRating: Math.round(avgRating * 10) / 10,
+                totalRatings: ratings.length,
+                quantityOffers: subcategory.quantityPrices,
+                hasQuantityPricing: subcategory.quantityPrices.length > 0
+            };
         });
 
         return {
-        subcategory: {
-            id: subcategory.id,
-            name: subcategory.name,
-            quantityOffers: subcategory.quantityPrices
-        },
-        products: productsWithOffers
+            subcategory: {
+                id: subcategory.id,
+                name: subcategory.name,
+                quantityOffers: subcategory.quantityPrices
+            },
+            products: productsWithOffers
         };
     }
 
@@ -384,228 +384,228 @@ class ProductService {
     async getProductById(productId, includeVariants = true) {
         // Validate input
         if (!productId || typeof productId !== 'string') {
-        throw new Error('Valid product ID is required');
+            throw new Error('Valid product ID is required');
         }
 
         const include = {
-        category: {
-            select: {
-            id: true,
-            name: true,
-            image: true
-            }
-        },
-        subcategory: {
-            include: { // CHANGED: Include quantityPrices
-            quantityPrices: {
-                where: { isActive: true },
-                orderBy: { quantity: 'asc' }
-            }
-            }
-        },
-        productDetails: true,
-        ratings: {
-            where: {
-            isApproved: true
-            },
-            include: {
-            user: {
+            category: {
                 select: {
-                id: true,
-                name: true,
-                avatar: true
+                    id: true,
+                    name: true,
+                    image: true
                 }
-            }
             },
-            orderBy: {
-            createdAt: 'desc'
-            }
-        },
-        variants: {
-            include: {
-            variantImages: {
+            subcategory: {
+                include: { // CHANGED: Include quantityPrices
+                    quantityPrices: {
+                        where: { isActive: true },
+                        orderBy: { quantity: 'asc' }
+                    }
+                }
+            },
+            productDetails: true,
+            ratings: {
+                where: {
+                    isApproved: true
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            avatar: true
+                        }
+                    }
+                },
                 orderBy: {
-                isPrimary: 'desc'
+                    createdAt: 'desc'
+                }
+            },
+            variants: {
+                include: {
+                    variantImages: {
+                        orderBy: {
+                            isPrimary: 'desc'
+                        }
+                    }
                 }
             }
-            }
-        }
         };
-        
+
         const product = await prisma.product.findUnique({
-        where: { id: productId },
-        include
+            where: { id: productId },
+            include
         });
-        
+
         if (!product) {
-        logger.warn(`Product not found with ID: ${productId}`);
-        return null;
+            logger.warn(`Product not found with ID: ${productId}`);
+            return null;
         }
-        
+
         // Calculate average rating
         const ratings = product.ratings;
-        const avgRating = ratings.length > 0 
-        ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
-        : 0;
-        
+        const avgRating = ratings.length > 0
+            ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
+            : 0;
+
         return {
-        ...product,
-        avgRating: Math.round(avgRating * 10) / 10,
-        totalRatings: ratings.length,
-        hasQuantityPricing: product.subcategory?.quantityPrices?.length > 0
+            ...product,
+            avgRating: Math.round(avgRating * 10) / 10,
+            totalRatings: ratings.length,
+            hasQuantityPricing: product.subcategory?.quantityPrices?.length > 0
         };
     }
 
     // Get product by product code - IMPROVED
     async getProductByCode(productCode, includeVariants = true) {
         const include = {
-        category: {
-            select: {
-            id: true,
-            name: true,
-            image: true
-            }
-        },
-        subcategory: {
-            include: { // CHANGED: Include quantityPrices
-            quantityPrices: {
-                where: { isActive: true },
-                orderBy: { quantity: 'asc' }
-            }
-            }
-        },
-        productDetails: true,
-        ratings: {
-            where: {
-            isApproved: true
-            },
-            include: {
-            user: {
+            category: {
                 select: {
-                id: true,
-                name: true,
-                avatar: true
+                    id: true,
+                    name: true,
+                    image: true
+                }
+            },
+            subcategory: {
+                include: { // CHANGED: Include quantityPrices
+                    quantityPrices: {
+                        where: { isActive: true },
+                        orderBy: { quantity: 'asc' }
+                    }
+                }
+            },
+            productDetails: true,
+            ratings: {
+                where: {
+                    isApproved: true
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            avatar: true
+                        }
+                    }
+                }
+            },
+            variants: {
+                include: {
+                    variantImages: {
+                        orderBy: {
+                            isPrimary: 'desc'
+                        }
+                    }
                 }
             }
-            }
-        },
-        variants: {
-            include: {
-            variantImages: {
-                orderBy: {
-                isPrimary: 'desc'
-                }
-            }
-            }
-        }
         };
-        
+
         const product = await prisma.product.findUnique({
-        where: { productCode },
-        include
+            where: { productCode },
+            include
         });
-        
+
         if (!product) {
-        throw new Error('Product not found');
+            throw new Error('Product not found');
         }
-        
+
         // Calculate average rating
         const ratings = product.ratings;
-        const avgRating = ratings.length > 0 
-        ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
-        : 0;
-        
+        const avgRating = ratings.length > 0
+            ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
+            : 0;
+
         return {
-        ...product,
-        avgRating: Math.round(avgRating * 10) / 10,
-        totalRatings: ratings.length,
-        hasQuantityPricing: product.subcategory?.quantityPrices?.length > 0
+            ...product,
+            avgRating: Math.round(avgRating * 10) / 10,
+            totalRatings: ratings.length,
+            hasQuantityPricing: product.subcategory?.quantityPrices?.length > 0
         };
     }
 
     async getSubcategoriesWithQuantityPricing() {
         return await prisma.subcategory.findMany({
-        where: {
-            quantityPrices: {
-            some: {
-                isActive: true
-            }
-            }
-        },
-        include: {
-            category: {
-            select: {
-                id: true,
-                name: true
-            }
+            where: {
+                quantityPrices: {
+                    some: {
+                        isActive: true
+                    }
+                }
             },
-            quantityPrices: {
-            where: { isActive: true },
-            orderBy: { quantity: 'asc' }
-            },
-            _count: {
-            select: {
-                products: {
-                where: { status: 'ACTIVE' }
+            include: {
+                category: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                quantityPrices: {
+                    where: { isActive: true },
+                    orderBy: { quantity: 'asc' }
+                },
+                _count: {
+                    select: {
+                        products: {
+                            where: { status: 'ACTIVE' }
+                        }
+                    }
                 }
             }
-            }
-        }
         });
     }
-    
+
     async calculateCartPrices(cartItems, isWholesaleUser = false) {
         const calculatedItems = await Promise.all(
             cartItems.map(async (item) => {
                 try {
-                const priceCalculation = await this.calculateQuantityPrice(
-                    item.productId,
-                    item.quantity,
-                    item.variantId,
-                    isWholesaleUser // Pass wholesale user flag
-                );
-                
-                return {
-                    ...item,
-                    priceCalculation,
-                    finalPrice: priceCalculation.totalPrice
-                };
+                    const priceCalculation = await this.calculateQuantityPrice(
+                        item.productId,
+                        item.quantity,
+                        item.variantId,
+                        isWholesaleUser // Pass wholesale user flag
+                    );
+
+                    return {
+                        ...item,
+                        priceCalculation,
+                        finalPrice: priceCalculation.totalPrice
+                    };
                 } catch (error) {
-                logger.error(`Error calculating price for product ${item.productId}:`, error);
-                
-                // Fallback to normal price calculation WITH WHOLESALE SUPPORT
-                const product = await prisma.product.findUnique({
-                    where: { id: item.productId },
-                    select: {
-                    normalPrice: true,
-                    offerPrice: true,
-                    wholesalePrice: true,
-                    name: true
+                    logger.error(`Error calculating price for product ${item.productId}:`, error);
+
+                    // Fallback to normal price calculation WITH WHOLESALE SUPPORT
+                    const product = await prisma.product.findUnique({
+                        where: { id: item.productId },
+                        select: {
+                            normalPrice: true,
+                            offerPrice: true,
+                            wholesalePrice: true,
+                            name: true
+                        }
+                    });
+
+                    // Determine unit price based on user type
+                    let unitPrice;
+                    if (isWholesaleUser && product?.wholesalePrice) {
+                        unitPrice = product.wholesalePrice;
+                    } else {
+                        unitPrice = product?.offerPrice || product?.normalPrice || 0;
                     }
-                });
-                
-                // Determine unit price based on user type
-                let unitPrice;
-                if (isWholesaleUser && product?.wholesalePrice) {
-                    unitPrice = product.wholesalePrice;
-                } else {
-                    unitPrice = product?.offerPrice || product?.normalPrice || 0;
-                }
-                
-                const totalPrice = unitPrice * item.quantity;
-                
-                return {
-                    ...item,
-                    priceCalculation: {
-                    totalPrice,
-                    effectiveUnitPrice: unitPrice,
-                    savings: 0,
-                    hasQuantityPricing: false,
-                    isWholesalePrice: isWholesaleUser && product?.wholesalePrice,
-                    error: error.message
-                    },
-                    finalPrice: totalPrice
-                };
+
+                    const totalPrice = unitPrice * item.quantity;
+
+                    return {
+                        ...item,
+                        priceCalculation: {
+                            totalPrice,
+                            effectiveUnitPrice: unitPrice,
+                            savings: 0,
+                            hasQuantityPricing: false,
+                            isWholesalePrice: isWholesaleUser && product?.wholesalePrice,
+                            error: error.message
+                        },
+                        finalPrice: totalPrice
+                    };
                 }
             })
         );
@@ -622,7 +622,7 @@ class ProductService {
             isWholesalePricing: isWholesaleUser
         };
     }
-    
+
     async createProduct(productData, variantImages = [], variantColors = []) {
         const {
             name,
@@ -641,35 +641,35 @@ class ProductService {
         const existingProduct = await prisma.product.findUnique({
             where: { productCode }
         });
-        
+
         if (existingProduct) {
             throw new Error('Product code already exists');
         }
-        
+
         // Check if category exists
         const category = await prisma.category.findUnique({
             where: { id: categoryId }
         });
-        
+
         if (!category) {
             throw new Error('Category not found');
         }
-        
+
         // Check if subcategory exists and belongs to category
         if (subcategoryId) {
             const subcategory = await prisma.subcategory.findUnique({
                 where: { id: subcategoryId }
             });
-            
+
             if (!subcategory) {
                 throw new Error('Subcategory not found');
             }
-            
+
             if (subcategory.categoryId !== categoryId) {
                 throw new Error('Subcategory does not belong to the specified category');
             }
         }
-        
+
         // Prepare product details data
         const productDetailsData = productDetails.map(detail => ({
             title: detail.title,
@@ -689,7 +689,7 @@ class ProductService {
             const colorImages = variantImagesByColor[color] || [];
 
             let variantImagesData = [];
-            
+
             // Upload variant images if provided for this color
             if (colorImages.length > 0) {
                 try {
@@ -697,14 +697,14 @@ class ProductService {
                         colorImages,
                         `products/${productCode}/variants/${color}`
                     );
-                    
+
                     variantImagesData = uploadResults.map((result, index) => ({
                         imageUrl: result.url,
                         imagePublicId: result.key,
                         isPrimary: index === 0,
                         color: color
                     }));
-                    
+
                 } catch (uploadError) {
                     logger.error('Failed to upload variant images:', uploadError);
                     throw new Error('Failed to upload variant images');
@@ -727,7 +727,7 @@ class ProductService {
                     const existingVariant = await prisma.productVariant.findUnique({
                         where: { sku }
                     });
-                    
+
                     if (existingVariant) {
                         throw new Error(`SKU already exists: ${sku}`);
                     }
@@ -856,7 +856,7 @@ class ProductService {
 
 
     async updateProduct(productId, updateData, files = [], variantColors = []) {
-        
+
         const product = await prisma.product.findUnique({
             where: { id: productId },
             include: {
@@ -868,11 +868,11 @@ class ProductService {
                 }
             }
         });
-        
+
         if (!product) {
             throw new Error('Product not found');
         }
-        
+
         const {
             name,
             description,
@@ -885,10 +885,10 @@ class ProductService {
             status,
             variants
         } = updateData;
-        
+
         // ✅ FIX: Ensure variants is always an array
         const variantsData = Array.isArray(variants) ? variants : [];
-        
+
         // Existing category/subcategory validation...
         if (categoryId && categoryId !== product.categoryId) {
             const category = await prisma.category.findUnique({
@@ -898,7 +898,7 @@ class ProductService {
                 throw new Error('Category not found');
             }
         }
-        
+
         if (subcategoryId && subcategoryId !== product.subcategoryId) {
             const subcategory = await prisma.subcategory.findUnique({
                 where: { id: subcategoryId }
@@ -910,13 +910,13 @@ class ProductService {
                 throw new Error('Subcategory does not belong to the specified category');
             }
         }
-        
+
         // ✅ FIX: Group images using variantColors
         let variantImagesByColor = {};
         if (variantsData.length > 0 && files.length > 0) {
             variantImagesByColor = this.groupVariantImagesByColor(files, variantsData, variantColors);
         }
-        
+
         // Update product data
         const updatePayload = {
             name: name || product.name,
@@ -929,14 +929,14 @@ class ProductService {
             status: status || product.status,
             updatedAt: new Date()
         };
-        
+
         // Handle product details update if provided
         if (productDetails && Array.isArray(productDetails)) {
             // Delete existing product details
             await prisma.productDetail.deleteMany({
                 where: { productId }
             });
-            
+
             // Create new product details
             updatePayload.productDetails = {
                 create: productDetails.map(detail => ({
@@ -945,10 +945,10 @@ class ProductService {
                 }))
             };
         }
-        
+
         // ✅ FIX: Handle variants update ONLY if variants data is provided
         if (variantsData.length > 0) {
-            
+
             // Get existing variant images grouped by color for preservation
             const existingImagesByColor = {};
             product.variants.forEach(variant => {
@@ -959,8 +959,8 @@ class ProductService {
                     existingImagesByColor[variant.color].push(...variant.variantImages);
                 }
             });
-            
-            
+
+
             // Delete existing variants and their images
             await prisma.productVariantImage.deleteMany({
                 where: {
@@ -969,21 +969,21 @@ class ProductService {
                     }
                 }
             });
-            
+
             await prisma.productVariant.deleteMany({
                 where: { productId }
             });
-            
+
             const flattenedVariants = [];
-            
+
             for (const variantGroup of variantsData) {
                 const { color, sizes = [] } = variantGroup;
                 const colorImages = variantImagesByColor[color] || [];
                 const existingColorImages = existingImagesByColor[color] || [];
-                
-                
+
+
                 let variantImagesData = [];
-                
+
                 // ✅ FIX: Preserve existing images if no new images uploaded
                 if (colorImages.length > 0) {
                     // Upload new variant images if provided
@@ -992,58 +992,58 @@ class ProductService {
                             colorImages,
                             `products/${product.productCode}/variants/${color}`
                         );
-                        
+
                         variantImagesData = uploadResults.map((result, index) => ({
                             imageUrl: result.url,
                             imagePublicId: result.key,
                             isPrimary: index === 0,
                             color: color
                         }));
-                        
-                        
+
+
                     } catch (uploadError) {
                         logger.error('Failed to upload variant images during update:', uploadError);
                         throw new Error('Failed to upload variant images');
                     }
                 } else if (existingColorImages.length > 0) {
                     // ✅ FIX: Preserve existing images when no new images are uploaded
-                    
+
                     variantImagesData = existingColorImages.map((image, index) => ({
                         imageUrl: image.imageUrl,
                         imagePublicId: image.imagePublicId,
                         isPrimary: image.isPrimary,
                         color: color
                     }));
-                    
+
                 } else {
                     console.error(`⚠️ No images found for color "${color}"`);
                 }
-                
+
                 // Create individual variants for each size
                 for (const sizeObj of sizes) {
                     const { size, stock = 0, sku: sizeSku } = sizeObj;
-                    
+
                     if (!size || size.trim() === '') {
                         console.warn(`Skipping invalid size for "${color}": ${size}`);
                         continue;
                     }
-                    
+
                     const sku = sizeSku || `${product.productCode}-${color}-${size}`;
-                    
+
                     // Check SKU uniqueness (excluding current product's variants)
                     if (sku) {
                         const existingVariant = await prisma.productVariant.findFirst({
-                            where: { 
+                            where: {
                                 sku,
                                 productId: { not: productId }
                             }
                         });
-                        
+
                         if (existingVariant) {
                             throw new Error(`SKU already exists: ${sku}`);
                         }
                     }
-                    
+
                     flattenedVariants.push({
                         color,
                         size: size.trim(),
@@ -1053,19 +1053,19 @@ class ProductService {
                             create: variantImagesData
                         }
                     });
-                    
+
                 }
             }
-            
+
             // Add variants to update payload
             updatePayload.variants = {
                 create: flattenedVariants
             };
-            
+
         } else {
             console.error('No variants data provided, keeping existing variants');
         }
-        
+
         const updatedProduct = await prisma.product.update({
             where: { id: productId },
             data: updatePayload,
@@ -1094,11 +1094,11 @@ class ProductService {
                 }
             }
         });
-        
+
         logger.info(`Product updated: ${productId}`);
         return updatedProduct;
     }
-    
+
     // Delete product - UPDATED: Remove product image deletion
     async deleteProduct(productId) {
         const product = await prisma.product.findUnique({
@@ -1113,16 +1113,16 @@ class ProductService {
                 orderItems: true
             }
         });
-        
+
         if (!product) {
             throw new Error('Product not found');
         }
-        
+
         // Check if product has orders
         if (product.orderItems.length > 0) {
             throw new Error('Cannot delete product with existing orders');
         }
-        
+
         // Delete variant images from S3
         for (const variant of product.variants) {
             for (const variantImage of variant.variantImages) {
@@ -1135,31 +1135,31 @@ class ProductService {
                 }
             }
         }
-        
+
         await prisma.product.delete({
             where: { id: productId }
         });
-        
+
         logger.info(`Product deleted: ${productId}`);
     }
-  
-  
+
+
     // Add product variant - UPDATED: Only variant images
     async addProductVariant(productId, variantData, files = []) {
         const product = await prisma.product.findUnique({
             where: { id: productId }
         });
-        
+
         if (!product) {
             throw new Error('Product not found');
         }
-        
+
         const { color, sizes } = variantData;
-        
+
         if (!color || !sizes || !Array.isArray(sizes)) {
             throw new Error('Color and sizes array are required');
         }
-        
+
         // Upload variant images if provided
         let variantImages = [];
         if (files.length > 0) {
@@ -1179,18 +1179,18 @@ class ProductService {
                 throw new Error('Failed to upload variant images');
             }
         }
-        
+
         // Create a variant for each size
         const createdVariants = [];
-        
+
         for (const sizeData of sizes) {
             const { size, stock = 0, sku } = sizeData;
-            
+
             if (!size || size === 'undefined') {
                 console.warn('Skipping variant with invalid size:', sizeData);
                 continue;
             }
-            
+
             // Check if variant with same color and size already exists
             const existingVariant = await prisma.productVariant.findFirst({
                 where: {
@@ -1199,11 +1199,11 @@ class ProductService {
                     size
                 }
             });
-            
+
             if (existingVariant) {
                 throw new Error(`Variant with color ${color} and size ${size} already exists`);
             }
-            
+
             // Check if SKU already exists
             if (sku) {
                 const existingSku = await prisma.productVariant.findFirst({
@@ -1212,14 +1212,14 @@ class ProductService {
                         productId: { not: productId }
                     }
                 });
-                
+
                 if (existingSku) {
                     throw new Error(`SKU ${sku} already exists`);
                 }
             }
-            
+
             const generatedSku = sku || `${product.productCode}-${color}-${size}`;
-            
+
             const variant = await prisma.productVariant.create({
                 data: {
                     productId,
@@ -1243,10 +1243,10 @@ class ProductService {
                     }
                 }
             });
-            
+
             createdVariants.push(variant);
         }
-        
+
         const updatedProduct = await prisma.product.findUnique({
             where: { id: productId },
             include: {
@@ -1261,118 +1261,198 @@ class ProductService {
                 }
             }
         });
-        
+
         logger.info(`Added ${createdVariants.length} variants for product ${productId}, color: ${color}`);
         return updatedProduct;
     }
-  
+
     // Update product variant - UPDATED: Only variant images
+    // async updateProductVariant(productId, variantId, variantData, files = []) {
+    //     const variant = await prisma.productVariant.findUnique({
+    //         where: { id: variantId },
+    //         include: {
+    //             variantImages: true
+    //         }
+    //     });
+
+    //     if (!variant || variant.productId !== productId) {
+    //         throw new Error('Product variant not found');
+    //     }
+
+    //     const { color, size, stock, sku } = variantData;
+
+    //     // Check if variant with same color and size already exists (excluding current variant)
+    //     if (color && size && (color !== variant.color || size !== variant.size)) {
+    //         const existingVariant = await prisma.productVariant.findFirst({
+    //             where: {
+    //                 productId,
+    //                 color,
+    //                 size,
+    //                 id: { not: variantId }
+    //             }
+    //         });
+
+    //         if (existingVariant) {
+    //             throw new Error('Variant with same color and size already exists');
+    //         }
+    //     }
+
+    //     // Check if SKU already exists (excluding current variant)
+    //     if (sku && sku !== variant.sku) {
+    //         const existingSku = await prisma.productVariant.findFirst({
+    //             where: {
+    //                 sku,
+    //                 id: { not: variantId }
+    //             }
+    //         });
+
+    //         if (existingSku) {
+    //             throw new Error('SKU already exists');
+    //         }
+    //     }
+
+    //     // Upload new variant images if provided
+    //     let newVariantImages = [];
+    //     if (files.length > 0) {
+    //         try {
+    //             const uploadResults = await s3UploadService.uploadMultipleImages(
+    //                 files,
+    //                 `products/${productId}/variants/${color || variant.color}`
+    //             );
+    //             newVariantImages = uploadResults.map(result => ({
+    //                 imageUrl: result.url,
+    //                 imagePublicId: result.key,
+    //                 isPrimary: false,
+    //                 color: color || variant.color
+    //             }));
+    //         } catch (uploadError) {
+    //             logger.error('Failed to upload variant images:', uploadError);
+    //             throw new Error('Failed to upload variant images');
+    //         }
+    //     }
+
+    //     const updatedVariant = await prisma.productVariant.update({
+    //         where: { id: variantId },
+    //         data: {
+    //             color: color || variant.color,
+    //             size: size || variant.size,
+    //             stock: stock !== undefined ? parseInt(stock) : variant.stock,
+    //             sku: sku || variant.sku,
+    //             updatedAt: new Date(),
+    //             ...(newVariantImages.length > 0 && {
+    //                 variantImages: {
+    //                     create: newVariantImages
+    //                 }
+    //             })
+    //         },
+    //         include: {
+    //             variantImages: {
+    //                 orderBy: {
+    //                     isPrimary: 'desc'
+    //                 }
+    //             }
+    //         }
+    //     });
+
+    //     const updatedProduct = await prisma.product.findUnique({
+    //         where: { id: productId },
+    //         include: {
+    //             variants: {
+    //                 include: {
+    //                     variantImages: {
+    //                         orderBy: {
+    //                             isPrimary: 'desc'
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     });
+
+    //     logger.info(`Product variant updated: ${productId}, variantId: ${variantId}`);
+    //     return updatedProduct;
+    // }
+
     async updateProductVariant(productId, variantId, variantData, files = []) {
         const variant = await prisma.productVariant.findUnique({
             where: { id: variantId },
-            include: {
-                variantImages: true
-            }
+            include: { variantImages: true }
         });
-        
+
         if (!variant || variant.productId !== productId) {
             throw new Error('Product variant not found');
         }
-        
+
         const { color, size, stock, sku } = variantData;
-        
-        // Check if variant with same color and size already exists (excluding current variant)
-        if (color && size && (color !== variant.color || size !== variant.size)) {
-            const existingVariant = await prisma.productVariant.findFirst({
-                where: {
-                    productId,
-                    color,
-                    size,
-                    id: { not: variantId }
-                }
-            });
-            
-            if (existingVariant) {
-                throw new Error('Variant with same color and size already exists');
-            }
-        }
-        
-        // Check if SKU already exists (excluding current variant)
-        if (sku && sku !== variant.sku) {
-            const existingSku = await prisma.productVariant.findFirst({
-                where: {
-                    sku,
-                    id: { not: variantId }
-                }
-            });
-            
-            if (existingSku) {
-                throw new Error('SKU already exists');
-            }
-        }
-        
-        // Upload new variant images if provided
-        let newVariantImages = [];
+
+        // 🔥 If new images uploaded → replace old images completely
         if (files.length > 0) {
-            try {
-                const uploadResults = await s3UploadService.uploadMultipleImages(
-                    files,
-                    `products/${productId}/variants/${color || variant.color}`
-                );
-                newVariantImages = uploadResults.map(result => ({
-                    imageUrl: result.url,
-                    imagePublicId: result.key,
-                    isPrimary: false,
-                    color: color || variant.color
-                }));
-            } catch (uploadError) {
-                logger.error('Failed to upload variant images:', uploadError);
-                throw new Error('Failed to upload variant images');
+
+            // 1️⃣ Delete old images from S3
+            for (const image of variant.variantImages) {
+                if (image.imagePublicId) {
+                    try {
+                        await s3UploadService.deleteImage(image.imagePublicId);
+                    } catch (err) {
+                        logger.error('Error deleting old image from S3:', err);
+                    }
+                }
             }
+
+            // 2️⃣ Delete old image records from DB
+            await prisma.productVariantImage.deleteMany({
+                where: { variantId }
+            });
+
+            // 3️⃣ Upload new images
+            const uploadResults = await s3UploadService.uploadMultipleImages(
+                files,
+                `products/${productId}/variants/${color || variant.color}`
+            );
+
+            const newImages = uploadResults.map((result, index) => ({
+                imageUrl: result.url,
+                imagePublicId: result.key,
+                isPrimary: index === 0,
+                color: color || variant.color,
+                variantId
+            }));
+
+            // 4️⃣ Insert new images
+            await prisma.productVariantImage.createMany({
+                data: newImages
+            });
         }
-        
-        const updatedVariant = await prisma.productVariant.update({
+
+        // 5️⃣ Update other variant fields
+        await prisma.productVariant.update({
             where: { id: variantId },
             data: {
                 color: color || variant.color,
                 size: size || variant.size,
                 stock: stock !== undefined ? parseInt(stock) : variant.stock,
                 sku: sku || variant.sku,
-                updatedAt: new Date(),
-                ...(newVariantImages.length > 0 && {
-                    variantImages: {
-                        create: newVariantImages
-                    }
-                })
-            },
-            include: {
-                variantImages: {
-                    orderBy: {
-                        isPrimary: 'desc'
-                    }
-                }
+                updatedAt: new Date()
             }
         });
-        
+
         const updatedProduct = await prisma.product.findUnique({
             where: { id: productId },
             include: {
                 variants: {
                     include: {
                         variantImages: {
-                            orderBy: {
-                                isPrimary: 'desc'
-                            }
+                            orderBy: { isPrimary: 'desc' }
                         }
                     }
                 }
             }
         });
-        
-        logger.info(`Product variant updated: ${productId}, variantId: ${variantId}`);
+
         return updatedProduct;
     }
-  
+
+
     // Remove product variant
     async removeProductVariant(productId, variantId) {
         const variant = await prisma.productVariant.findUnique({
@@ -1382,16 +1462,16 @@ class ProductService {
                 orderItems: true
             }
         });
-        
+
         if (!variant || variant.productId !== productId) {
             throw new Error('Product variant not found');
         }
-        
+
         // Check if variant has orders
         if (variant.orderItems.length > 0) {
             throw new Error('Cannot delete variant with existing orders');
         }
-        
+
         // Delete variant images from S3
         for (const variantImage of variant.variantImages) {
             if (variantImage.imagePublicId) {
@@ -1402,11 +1482,11 @@ class ProductService {
                 }
             }
         }
-        
+
         await prisma.productVariant.delete({
             where: { id: variantId }
         });
-        
+
         const updatedProduct = await prisma.product.findUnique({
             where: { id: productId },
             include: {
@@ -1421,21 +1501,21 @@ class ProductService {
                 }
             }
         });
-        
+
         logger.info(`Product variant removed: ${productId}, variantId: ${variantId}`);
         return updatedProduct;
     }
-  
+
     // Add variant images
     async addVariantImages(productId, variantId, files) {
         const variant = await prisma.productVariant.findUnique({
             where: { id: variantId }
         });
-        
+
         if (!variant || variant.productId !== productId) {
             throw new Error('Product variant not found');
         }
-        
+
         let newVariantImages = [];
         if (files.length > 0) {
             try {
@@ -1454,7 +1534,7 @@ class ProductService {
                 throw new Error('Failed to upload variant images');
             }
         }
-        
+
         const updatedVariant = await prisma.productVariant.update({
             where: { id: variantId },
             data: {
@@ -1471,11 +1551,11 @@ class ProductService {
                 }
             }
         });
-        
+
         logger.info(`Variant images added: ${variantId}, count: ${newVariantImages.length}`);
         return updatedVariant;
     }
-  
+
     // Remove variant image
     async removeVariantImage(productId, variantId, imageId) {
         const variant = await prisma.productVariant.findUnique({
@@ -1484,16 +1564,16 @@ class ProductService {
                 variantImages: true
             }
         });
-        
+
         if (!variant || variant.productId !== productId) {
             throw new Error('Product variant not found');
         }
-        
+
         const variantImage = variant.variantImages.find(img => img.id === imageId);
         if (!variantImage) {
             throw new Error('Variant image not found');
         }
-        
+
         // Delete image from S3
         if (variantImage.imagePublicId) {
             try {
@@ -1503,25 +1583,25 @@ class ProductService {
                 throw new Error('Failed to remove variant image');
             }
         }
-        
+
         // If this was the primary image, set another image as primary
         let setNewPrimary = false;
         if (variantImage.isPrimary && variant.variantImages.length > 1) {
             setNewPrimary = true;
         }
-        
+
         // Delete the image
         await prisma.productVariantImage.delete({
             where: { id: imageId }
         });
-        
+
         // Set new primary image if needed
         if (setNewPrimary) {
             const remainingImages = await prisma.productVariantImage.findMany({
                 where: { variantId },
                 orderBy: { createdAt: 'asc' }
             });
-            
+
             if (remainingImages.length > 0) {
                 await prisma.productVariantImage.update({
                     where: { id: remainingImages[0].id },
@@ -1529,7 +1609,7 @@ class ProductService {
                 });
             }
         }
-        
+
         const updatedVariant = await prisma.productVariant.findUnique({
             where: { id: variantId },
             include: {
@@ -1540,11 +1620,11 @@ class ProductService {
                 }
             }
         });
-        
+
         logger.info(`Variant image removed: ${variantId}, imageId: ${imageId}`);
         return updatedVariant;
     }
-  
+
     // Set primary variant image
     async setPrimaryVariantImage(productId, variantId, imageId) {
         const variant = await prisma.productVariant.findUnique({
@@ -1553,28 +1633,28 @@ class ProductService {
                 variantImages: true
             }
         });
-        
+
         if (!variant || variant.productId !== productId) {
             throw new Error('Product variant not found');
         }
-        
+
         const variantImage = variant.variantImages.find(img => img.id === imageId);
         if (!variantImage) {
             throw new Error('Variant image not found');
         }
-        
+
         // Reset all variant images to non-primary
         await prisma.productVariantImage.updateMany({
             where: { variantId },
             data: { isPrimary: false }
         });
-        
+
         // Set the selected image as primary
         await prisma.productVariantImage.update({
             where: { id: imageId },
             data: { isPrimary: true }
         });
-        
+
         const updatedVariant = await prisma.productVariant.findUnique({
             where: { id: variantId },
             include: {
@@ -1585,21 +1665,21 @@ class ProductService {
                 }
             }
         });
-        
+
         logger.info(`Primary variant image set: ${variantId}, imageId: ${imageId}`);
         return updatedVariant;
     }
-  
+
     // Update variant stock
     async updateVariantStock(productId, variantId, stock) {
         const variant = await prisma.productVariant.findUnique({
             where: { id: variantId }
         });
-        
+
         if (!variant || variant.productId !== productId) {
             throw new Error('Product variant not found');
         }
-        
+
         const updatedVariant = await prisma.productVariant.update({
             where: { id: variantId },
             data: {
@@ -1607,11 +1687,11 @@ class ProductService {
                 updatedAt: new Date()
             }
         });
-        
+
         logger.info(`Variant stock updated: ${variantId}, stock: ${stock}`);
         return updatedVariant;
     }
-  
+
     // Get product statistics
     async getProductStats() {
         const [
@@ -1652,7 +1732,7 @@ class ProductService {
                 }
             })
         ]);
-        
+
         return {
             totalProducts,
             activeProducts,
@@ -1665,7 +1745,7 @@ class ProductService {
             averagePrice: averagePrice._avg.normalPrice || 0
         };
     }
-  
+
     // Search products - UPDATED: Remove product image references
     async searchProducts({
         query,
@@ -1679,11 +1759,11 @@ class ProductService {
         limit = 12
     }) {
         const skip = (page - 1) * limit;
-        
+
         const where = {
             status: 'ACTIVE'
         };
-        
+
         if (query) {
             where.OR = [
                 { name: { contains: query, mode: 'insensitive' } },
@@ -1691,15 +1771,15 @@ class ProductService {
                 { productCode: { contains: query, mode: 'insensitive' } }
             ];
         }
-        
+
         if (categoryId) {
             where.categoryId = categoryId;
         }
-        
+
         if (subcategoryId) {
             where.subcategoryId = subcategoryId;
         }
-        
+
         if (minPrice !== undefined || maxPrice !== undefined) {
             where.OR = [
                 {
@@ -1716,7 +1796,7 @@ class ProductService {
                 }
             ];
         }
-        
+
         // Filter by variants (color and size)
         if (colors.length > 0 || sizes.length > 0) {
             where.variants = {
@@ -1726,7 +1806,7 @@ class ProductService {
                 }
             };
         }
-        
+
         const [products, total] = await Promise.all([
             prisma.product.findMany({
                 where,
@@ -1769,19 +1849,19 @@ class ProductService {
             }),
             prisma.product.count({ where })
         ]);
-        
+
         // Calculate average ratings and get available colors and sizes
         const productsWithDetails = products.map(product => {
             const ratings = product.ratings;
-            const avgRating = ratings.length > 0 
-                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
+            const avgRating = ratings.length > 0
+                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
                 : 0;
-            
+
             // Get unique colors and sizes from variants
             const availableColors = [...new Set(product.variants.map(v => v.color))];
             const availableSizes = [...new Set(product.variants.map(v => v.size))];
             const totalStock = product.variants.reduce((sum, v) => sum + v.stock, 0);
-            
+
             return {
                 ...product,
                 avgRating: Math.round(avgRating * 10) / 10,
@@ -1791,7 +1871,7 @@ class ProductService {
                 totalStock
             };
         });
-        
+
         // Get available filters
         const availableColors = await prisma.productVariant.findMany({
             where: {
@@ -1806,7 +1886,7 @@ class ProductService {
                 color: true
             }
         });
-        
+
         const availableSizes = await prisma.productVariant.findMany({
             where: {
                 product: {
@@ -1820,7 +1900,7 @@ class ProductService {
                 size: true
             }
         });
-        
+
         return {
             products: productsWithDetails,
             filters: {
@@ -1899,8 +1979,8 @@ class ProductService {
             }, 0);
 
             const ratings = product.ratings;
-            const avgRating = ratings.length > 0 
-                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
+            const avgRating = ratings.length > 0
+                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
                 : 0;
 
             return {
@@ -1957,8 +2037,8 @@ class ProductService {
         // Calculate average ratings
         const productsWithRatings = products.map(product => {
             const ratings = product.ratings;
-            const avgRating = ratings.length > 0 
-                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
+            const avgRating = ratings.length > 0
+                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
                 : 0;
 
             return {
@@ -1975,7 +2055,7 @@ class ProductService {
     async getRelatedProducts({ category, exclude, limit = 10 }) {
         try {
             logger.info(`Fetching related products - Category: ${category}, Exclude: ${exclude}, Limit: ${limit}`);
-            
+
             // Validate inputs
             if (!category || !exclude) {
                 throw new Error('Category and exclude parameters are required');
@@ -2048,8 +2128,8 @@ class ProductService {
             // Calculate average ratings and format response
             const formattedProducts = relatedProducts.map(product => {
                 const ratings = product.ratings;
-                const avgRating = ratings.length > 0 
-                    ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
+                const avgRating = ratings.length > 0
+                    ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
                     : 0;
 
                 return {
@@ -2060,197 +2140,197 @@ class ProductService {
             });
 
             return formattedProducts;
-            
+
         } catch (error) {
             logger.error('Error in getRelatedProducts:', error);
             throw error;
         }
-    } 
+    }
 
     // Add this method to your ProductService class
     async toggleProductStatus(productId, status) {
-    const product = await prisma.product.findUnique({
-        where: { id: productId }
-    });
-    
-    if (!product) {
-        throw new Error('Product not found');
-    }
-    
-    // Validate status
-    const validStatuses = ['ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'DISCONTINUED'];
-    if (!validStatuses.includes(status)) {
-        throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
-    }
-    
-    const updatedProduct = await prisma.product.update({
-        where: { id: productId },
-        data: {
-        status: status,
-        updatedAt: new Date()
-        },
-        include: {
-        category: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        subcategory: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        variants: {
+        const product = await prisma.product.findUnique({
+            where: { id: productId }
+        });
+
+        if (!product) {
+            throw new Error('Product not found');
+        }
+
+        // Validate status
+        const validStatuses = ['ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'DISCONTINUED'];
+        if (!validStatuses.includes(status)) {
+            throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+        }
+
+        const updatedProduct = await prisma.product.update({
+            where: { id: productId },
+            data: {
+                status: status,
+                updatedAt: new Date()
+            },
             include: {
-            variantImages: {
-                orderBy: {
-                isPrimary: 'desc'
+                category: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                subcategory: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                variants: {
+                    include: {
+                        variantImages: {
+                            orderBy: {
+                                isPrimary: 'desc'
+                            }
+                        }
+                    }
                 }
             }
-            }
-        }
-        }
-    });
-    
-    logger.info(`Product status updated: ${productId}, status: ${status}`);
-    return updatedProduct;
+        });
+
+        logger.info(`Product status updated: ${productId}, status: ${status}`);
+        return updatedProduct;
     }
 
     // Toggle best seller status
     async toggleBestSeller(productId, isBestSeller) {
-    const product = await prisma.product.findUnique({
-        where: { id: productId }
-    });
-    
-    if (!product) {
-        throw new Error('Product not found');
-    }
-    
-    const updatedProduct = await prisma.product.update({
-        where: { id: productId },
-        data: {
-        isBestSeller: Boolean(isBestSeller),
-        updatedAt: new Date()
-        },
-        include: {
-        category: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        subcategory: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        variants: {
+        const product = await prisma.product.findUnique({
+            where: { id: productId }
+        });
+
+        if (!product) {
+            throw new Error('Product not found');
+        }
+
+        const updatedProduct = await prisma.product.update({
+            where: { id: productId },
+            data: {
+                isBestSeller: Boolean(isBestSeller),
+                updatedAt: new Date()
+            },
             include: {
-            variantImages: {
-                orderBy: {
-                isPrimary: 'desc'
+                category: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                subcategory: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                variants: {
+                    include: {
+                        variantImages: {
+                            orderBy: {
+                                isPrimary: 'desc'
+                            }
+                        }
+                    }
                 }
             }
-            }
-        }
-        }
-    });
-    
-    logger.info(`Product best seller status updated: ${productId}, isBestSeller: ${isBestSeller}`);
-    return updatedProduct;
+        });
+
+        logger.info(`Product best seller status updated: ${productId}, isBestSeller: ${isBestSeller}`);
+        return updatedProduct;
     }
 
     // Toggle new arrival status
     async toggleNewArrival(productId, isNewArrival) {
-    const product = await prisma.product.findUnique({
-        where: { id: productId }
-    });
-    
-    if (!product) {
-        throw new Error('Product not found');
-    }
-    
-    const updatedProduct = await prisma.product.update({
-        where: { id: productId },
-        data: {
-        isNewArrival: Boolean(isNewArrival),
-        updatedAt: new Date()
-        },
-        include: {
-        category: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        subcategory: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        variants: {
+        const product = await prisma.product.findUnique({
+            where: { id: productId }
+        });
+
+        if (!product) {
+            throw new Error('Product not found');
+        }
+
+        const updatedProduct = await prisma.product.update({
+            where: { id: productId },
+            data: {
+                isNewArrival: Boolean(isNewArrival),
+                updatedAt: new Date()
+            },
             include: {
-            variantImages: {
-                orderBy: {
-                isPrimary: 'desc'
+                category: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                subcategory: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                variants: {
+                    include: {
+                        variantImages: {
+                            orderBy: {
+                                isPrimary: 'desc'
+                            }
+                        }
+                    }
                 }
             }
-            }
-        }
-        }
-    });
-    
-    logger.info(`Product new arrival status updated: ${productId}, isNewArrival: ${isNewArrival}`);
-    return updatedProduct;
+        });
+
+        logger.info(`Product new arrival status updated: ${productId}, isNewArrival: ${isNewArrival}`);
+        return updatedProduct;
     }
 
     // Toggle featured status
     async toggleFeatured(productId, featured) {
-    const product = await prisma.product.findUnique({
-        where: { id: productId }
-    });
-    
-    if (!product) {
-        throw new Error('Product not found');
-    }
-    
-    const updatedProduct = await prisma.product.update({
-        where: { id: productId },
-        data: {
-        featured: Boolean(featured),
-        updatedAt: new Date()
-        },
-        include: {
-        category: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        subcategory: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        variants: {
+        const product = await prisma.product.findUnique({
+            where: { id: productId }
+        });
+
+        if (!product) {
+            throw new Error('Product not found');
+        }
+
+        const updatedProduct = await prisma.product.update({
+            where: { id: productId },
+            data: {
+                featured: Boolean(featured),
+                updatedAt: new Date()
+            },
             include: {
-            variantImages: {
-                orderBy: {
-                isPrimary: 'desc'
+                category: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                subcategory: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                variants: {
+                    include: {
+                        variantImages: {
+                            orderBy: {
+                                isPrimary: 'desc'
+                            }
+                        }
+                    }
                 }
             }
-            }
-        }
-        }
-    });
-    
-    logger.info(`Product featured status updated: ${productId}, featured: ${featured}`);
-    return updatedProduct;
+        });
+
+        logger.info(`Product featured status updated: ${productId}, featured: ${featured}`);
+        return updatedProduct;
     }
 
     // Get best seller products (UPDATED: Using the flag)
@@ -2322,7 +2402,7 @@ class ProductService {
         // Calculate sales count and average ratings
         const productsWithSalesAndRatings = products.map(product => {
             let totalSales = 0;
-            
+
             // Only calculate sales if variants are included
             if (includeVariants && product.variants) {
                 totalSales = product.variants.reduce((sum, variant) => {
@@ -2331,8 +2411,8 @@ class ProductService {
             }
 
             const ratings = product.ratings;
-            const avgRating = ratings.length > 0 
-                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
+            const avgRating = ratings.length > 0
+                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
                 : 0;
 
             return {
@@ -2351,65 +2431,65 @@ class ProductService {
 
     // Get new arrivals (UPDATED: Using the flag)
     async getNewArrivals(limit = 8) {
-            const products = await prisma.product.findMany({
-                where: {
-                    status: 'ACTIVE',
-                    isNewArrival: true
+        const products = await prisma.product.findMany({
+            where: {
+                status: 'ACTIVE',
+                isNewArrival: true
+            },
+            include: {
+                category: {
+                    select: {
+                        id: true,
+                        name: true,
+                        image: true
+                    }
                 },
-                include: {
-                    category: {
-                        select: {
-                            id: true,
-                            name: true,
-                            image: true
-                        }
-                    },
-                    subcategory: {
-                        select: {
-                            id: true,
-                            name: true,
-                            image: true
-                        }
-                    },
-                    variants: {
-                        include: {
-                            variantImages: {
-                                orderBy: {
-                                    isPrimary: 'desc'
-                                }
+                subcategory: {
+                    select: {
+                        id: true,
+                        name: true,
+                        image: true
+                    }
+                },
+                variants: {
+                    include: {
+                        variantImages: {
+                            orderBy: {
+                                isPrimary: 'desc'
                             }
-                        }
-                    },
-                    ratings: {
-                        where: {
-                            isApproved: true
-                        },
-                        select: {
-                            rating: true
                         }
                     }
                 },
-                orderBy: {
-                    createdAt: 'desc'
-                },
-                take: limit
-            });
+                ratings: {
+                    where: {
+                        isApproved: true
+                    },
+                    select: {
+                        rating: true
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            },
+            take: limit
+        });
 
-            // Calculate average ratings
-            const productsWithRatings = products.map(product => {
-                const ratings = product.ratings;
-                const avgRating = ratings.length > 0 
-                    ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
-                    : 0;
+        // Calculate average ratings
+        const productsWithRatings = products.map(product => {
+            const ratings = product.ratings;
+            const avgRating = ratings.length > 0
+                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
+                : 0;
 
-                return {
-                    ...product,
-                    avgRating: Math.round(avgRating * 10) / 10,
-                    totalRatings: ratings.length
-                };
-            });
+            return {
+                ...product,
+                avgRating: Math.round(avgRating * 10) / 10,
+                totalRatings: ratings.length
+            };
+        });
 
-            return productsWithRatings;
+        return productsWithRatings;
     }
 
     // Get featured products
@@ -2461,8 +2541,8 @@ class ProductService {
         // Calculate average ratings
         const productsWithRatings = products.map(product => {
             const ratings = product.ratings;
-            const avgRating = ratings.length > 0 
-                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length 
+            const avgRating = ratings.length > 0
+                ? ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length
                 : 0;
 
             return {
@@ -2477,245 +2557,245 @@ class ProductService {
 
     // Auto-mark products as new arrivals (products created in last 30 days)
     async autoMarkNewArrivals() {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Mark products created in last 30 days as new arrivals
-    await prisma.product.updateMany({
-        where: {
-        createdAt: {
-            gte: thirtyDaysAgo
-        },
-        status: 'ACTIVE'
-        },
-        data: {
-        isNewArrival: true
-        }
-    });
+        // Mark products created in last 30 days as new arrivals
+        await prisma.product.updateMany({
+            where: {
+                createdAt: {
+                    gte: thirtyDaysAgo
+                },
+                status: 'ACTIVE'
+            },
+            data: {
+                isNewArrival: true
+            }
+        });
 
-    // Unmark products older than 30 days
-    await prisma.product.updateMany({
-        where: {
-        createdAt: {
-            lt: thirtyDaysAgo
-        }
-        },
-        data: {
-        isNewArrival: false
-        }
-    });
+        // Unmark products older than 30 days
+        await prisma.product.updateMany({
+            where: {
+                createdAt: {
+                    lt: thirtyDaysAgo
+                }
+            },
+            data: {
+                isNewArrival: false
+            }
+        });
 
-    logger.info('Auto-marked new arrivals based on creation date');
+        logger.info('Auto-marked new arrivals based on creation date');
     }
 
     // Auto-update best sellers based on sales
     async autoUpdateBestSellers() {
-    // Get products with highest sales in last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        // Get products with highest sales in last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const bestSellingProducts = await prisma.product.findMany({
-        where: {
-        status: 'ACTIVE',
-        orderItems: {
-            some: {
-            order: {
-                createdAt: {
-                gte: thirtyDaysAgo
-                },
-                paymentStatus: 'PAID'
-            }
-            }
-        }
-        },
-        include: {
-        orderItems: {
+        const bestSellingProducts = await prisma.product.findMany({
             where: {
-            order: {
-                createdAt: {
-                gte: thirtyDaysAgo
-                },
-                paymentStatus: 'PAID'
-            }
+                status: 'ACTIVE',
+                orderItems: {
+                    some: {
+                        order: {
+                            createdAt: {
+                                gte: thirtyDaysAgo
+                            },
+                            paymentStatus: 'PAID'
+                        }
+                    }
+                }
             },
-            select: {
-            quantity: true
+            include: {
+                orderItems: {
+                    where: {
+                        order: {
+                            createdAt: {
+                                gte: thirtyDaysAgo
+                            },
+                            paymentStatus: 'PAID'
+                        }
+                    },
+                    select: {
+                        quantity: true
+                    }
+                }
             }
-        }
-        }
-    });
-
-    // Calculate total sales for each product
-    const productsWithSales = bestSellingProducts.map(product => ({
-        ...product,
-        totalSales: product.orderItems.reduce((sum, item) => sum + item.quantity, 0)
-    }));
-
-    // Sort by sales and take top 20
-    const topProducts = productsWithSales
-        .sort((a, b) => b.totalSales - a.totalSales)
-        .slice(0, 20);
-
-    // Reset all best sellers
-    await prisma.product.updateMany({
-        where: {
-        isBestSeller: true
-        },
-        data: {
-        isBestSeller: false
-        }
-    });
-
-    // Mark top products as best sellers
-    if (topProducts.length > 0) {
-        await prisma.product.updateMany({
-        where: {
-            id: {
-            in: topProducts.map(p => p.id)
-            }
-        },
-        data: {
-            isBestSeller: true
-        }
         });
-    }
 
-    logger.info(`Auto-updated best sellers: ${topProducts.length} products marked as best sellers`);
+        // Calculate total sales for each product
+        const productsWithSales = bestSellingProducts.map(product => ({
+            ...product,
+            totalSales: product.orderItems.reduce((sum, item) => sum + item.quantity, 0)
+        }));
+
+        // Sort by sales and take top 20
+        const topProducts = productsWithSales
+            .sort((a, b) => b.totalSales - a.totalSales)
+            .slice(0, 20);
+
+        // Reset all best sellers
+        await prisma.product.updateMany({
+            where: {
+                isBestSeller: true
+            },
+            data: {
+                isBestSeller: false
+            }
+        });
+
+        // Mark top products as best sellers
+        if (topProducts.length > 0) {
+            await prisma.product.updateMany({
+                where: {
+                    id: {
+                        in: topProducts.map(p => p.id)
+                    }
+                },
+                data: {
+                    isBestSeller: true
+                }
+            });
+        }
+
+        logger.info(`Auto-updated best sellers: ${topProducts.length} products marked as best sellers`);
     }
 
     // Add this method to your ProductService class
     async addProductDetails(productId, productDetails) {
-    const product = await prisma.product.findUnique({
-        where: { id: productId },
-        include: { productDetails: true }
-    });
-    
-    if (!product) {
-        throw new Error('Product not found');
-    }
-    
-    // Validate productDetails array
-    if (!Array.isArray(productDetails) || productDetails.length === 0) {
-        throw new Error('Product details must be a non-empty array');
-    }
-    
-    // Prepare product details data
-    const productDetailsData = productDetails.map(detail => ({
-        title: detail.title,
-        description: detail.description,
-        productId: productId
-    }));
-    
-    // Create product details
-    const createdDetails = await prisma.productDetail.createMany({
-        data: productDetailsData
-    });
-    
-    // Fetch the updated product with all details
-    const updatedProduct = await prisma.product.findUnique({
-        where: { id: productId },
-        include: {
-        category: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        subcategory: {
-            select: {
-            id: true,
-            name: true
-            }
-        },
-        productDetails: true,
-        variants: {
+        const product = await prisma.product.findUnique({
+            where: { id: productId },
+            include: { productDetails: true }
+        });
+
+        if (!product) {
+            throw new Error('Product not found');
+        }
+
+        // Validate productDetails array
+        if (!Array.isArray(productDetails) || productDetails.length === 0) {
+            throw new Error('Product details must be a non-empty array');
+        }
+
+        // Prepare product details data
+        const productDetailsData = productDetails.map(detail => ({
+            title: detail.title,
+            description: detail.description,
+            productId: productId
+        }));
+
+        // Create product details
+        const createdDetails = await prisma.productDetail.createMany({
+            data: productDetailsData
+        });
+
+        // Fetch the updated product with all details
+        const updatedProduct = await prisma.product.findUnique({
+            where: { id: productId },
             include: {
-            variantImages: {
-                orderBy: {
-                isPrimary: 'desc'
+                category: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                subcategory: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                productDetails: true,
+                variants: {
+                    include: {
+                        variantImages: {
+                            orderBy: {
+                                isPrimary: 'desc'
+                            }
+                        }
+                    }
                 }
             }
-            }
-        }
-        }
-    });
-    
-    logger.info(`Product details added: ${productId}, count: ${createdDetails.count}`);
-    return updatedProduct;
+        });
+
+        logger.info(`Product details added: ${productId}, count: ${createdDetails.count}`);
+        return updatedProduct;
     }
 
     // Update product details
     async updateProductDetail(productId, detailId, updateData) {
-    const productDetail = await prisma.productDetail.findFirst({
-        where: {
-        id: detailId,
-        productId: productId
+        const productDetail = await prisma.productDetail.findFirst({
+            where: {
+                id: detailId,
+                productId: productId
+            }
+        });
+
+        if (!productDetail) {
+            throw new Error('Product detail not found');
         }
-    });
-    
-    if (!productDetail) {
-        throw new Error('Product detail not found');
-    }
-    
-    // Validate update data
-    if (!updateData.title && !updateData.description) {
-        throw new Error('At least title or description must be provided');
-    }
-    
-    const updatedDetail = await prisma.productDetail.update({
-        where: { id: detailId },
-        data: {
-        title: updateData.title ? updateData.title.trim() : undefined,
-        description: updateData.description ? updateData.description.trim() : undefined,
-        updatedAt: new Date()
+
+        // Validate update data
+        if (!updateData.title && !updateData.description) {
+            throw new Error('At least title or description must be provided');
         }
-    });
-    
-    logger.info(`Product detail updated: ${detailId} for product: ${productId}`);
-    return updatedDetail;
+
+        const updatedDetail = await prisma.productDetail.update({
+            where: { id: detailId },
+            data: {
+                title: updateData.title ? updateData.title.trim() : undefined,
+                description: updateData.description ? updateData.description.trim() : undefined,
+                updatedAt: new Date()
+            }
+        });
+
+        logger.info(`Product detail updated: ${detailId} for product: ${productId}`);
+        return updatedDetail;
     }
 
     // Get product details
     async getProductDetails(productId) {
-    const product = await prisma.product.findUnique({
-        where: { id: productId },
-        include: {
-        productDetails: {
-            orderBy: {
-            createdAt: 'asc'
+        const product = await prisma.product.findUnique({
+            where: { id: productId },
+            include: {
+                productDetails: {
+                    orderBy: {
+                        createdAt: 'asc'
+                    }
+                }
             }
+        });
+
+        if (!product) {
+            throw new Error('Product not found');
         }
-        }
-    });
-    
-    if (!product) {
-        throw new Error('Product not found');
-    }
-    
-    return product.productDetails;
+
+        return product.productDetails;
     }
 
     // Delete product detail
     async deleteProductDetail(productId, detailId) {
-    const productDetail = await prisma.productDetail.findFirst({
-        where: {
-        id: detailId,
-        productId: productId
+        const productDetail = await prisma.productDetail.findFirst({
+            where: {
+                id: detailId,
+                productId: productId
+            }
+        });
+
+        if (!productDetail) {
+            throw new Error('Product detail not found');
         }
-    });
-    
-    if (!productDetail) {
-        throw new Error('Product detail not found');
-    }
-    
-    await prisma.productDetail.delete({
-        where: { id: detailId }
-    });
-    
-    logger.info(`Product detail deleted: ${detailId} from product: ${productId}`);
-    
-    // Return updated product details
-    return this.getProductDetails(productId);
+
+        await prisma.productDetail.delete({
+            where: { id: detailId }
+        });
+
+        logger.info(`Product detail deleted: ${detailId} from product: ${productId}`);
+
+        // Return updated product details
+        return this.getProductDetails(productId);
     }
 
 }
