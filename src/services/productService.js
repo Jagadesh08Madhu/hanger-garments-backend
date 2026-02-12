@@ -1,4 +1,3 @@
-
 import prisma from '../config/database.js';
 import logger from '../utils/logger.js';
 import s3UploadService from './s3UploadService.js';
@@ -801,7 +800,7 @@ class ProductService {
                     size: size.trim(),
                     stock: parseInt(stock) || 0,
                     sku: sku || null,
-                    ...(sanitizedVariantCodes.length > 0 && { variantCodes: sanitizedVariantCodes }),
+                    variantCodes: sanitizedVariantCodes, // ✅ Add variantCodes at variant level (shared by all sizes of same color)
                     variantImages: {
                         create: variantImagesData
                     }
@@ -1182,7 +1181,7 @@ class ProductService {
                         size: size.trim(),
                         stock: parseInt(stock) || 0,
                         sku: sku || null,
-                        ...(sanitizedVariantCodes.length > 0 && { variantCodes: sanitizedVariantCodes }),
+                        variantCodes: sanitizedVariantCodes, // ✅ Use COLOR level variantCodes for all sizes
                         variantImages: {
                             create: variantImagesData
                         }
@@ -1568,7 +1567,7 @@ class ProductService {
                 color: color
             },
             data: {
-                 ...(sanitizedVariantCodes.length > 0 && { variantCodes: sanitizedVariantCodes }),
+                variantCodes: sanitizedVariantCodes,
                 updatedAt: new Date()
             }
         });
@@ -1594,7 +1593,7 @@ class ProductService {
             success: true,
             message: `Updated variant codes for ${updatedVariants.count} variants`,
             color: color,
-            ...(sanitizedVariantCodes.length > 0 && { variantCodes: sanitizedVariantCodes }),
+            variantCodes: sanitizedVariantCodes,
             variants: result
         };
     }

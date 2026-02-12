@@ -432,11 +432,10 @@ export const removeVariantImage = asyncHandler(async (req, res) => {
 
 // Set primary variant image (Admin only)
 export const setPrimaryVariantImage = asyncHandler(async (req, res) => {
-  const { productId, variantId, imageId } = req.params;
+  const { productId, imageId } = req.params;
   
   const updatedProduct = await productService.setPrimaryVariantImage(
-    productId,
-    variantId, 
+    productId, 
     imageId
   );
   
@@ -450,27 +449,37 @@ export const setPrimaryVariantImage = asyncHandler(async (req, res) => {
 // Update variant stock (Admin only)
 export const updateVariantStock = asyncHandler(async (req, res) => {
   const { productId, variantId } = req.params;
-  const { stock } = req.body;
-  
+  const { stock, size ,color} = req.body;
+
+  if (!size) {
+    return res.status(400).json({
+      success: false,
+      message: 'Size is required'
+    });
+  }
+
   if (stock === undefined || stock === null) {
     return res.status(400).json({
       success: false,
       message: 'Stock is required'
     });
   }
-  
+
   const updatedVariant = await productService.updateVariantStock(
     productId,
-    variantId, 
+    variantId,
+    size,
+    color,
     parseInt(stock)
   );
-  
+
   res.status(200).json({
     success: true,
-    message: 'Variant stock updated successfully',
+    message: `Stock updated for ${size}`,
     data: updatedVariant
   });
 });
+
 
 // Get product statistics (Admin only)
 export const getProductStats = asyncHandler(async (req, res) => {
@@ -685,71 +694,71 @@ export const getRelatedProducts = asyncHandler(async (req, res) => {
   });
 
 
-  // Calculate price for specific quantity
-  export const calculateQuantityPrice = asyncHandler(async (req, res) => {
-      try {
-          const { productId } = req.params;
-          const { quantity } = req.body;
+// Calculate price for specific quantity
+export const calculateQuantityPrice = asyncHandler(async (req, res) => {
+    try {
+        const { productId } = req.params;
+        const { quantity } = req.body;
 
 
-          // Validate input
-          if (!productId || !productId.trim()) {
-              return res.status(400).json({
-                  success: false,
-                  message: 'Product ID is required'
-              });
-          }
+        // Validate input
+        if (!productId || !productId.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Product ID is required'
+            });
+        }
 
-          if (!quantity || quantity < 1) {
-              return res.status(400).json({
-                  success: false,
-                  message: 'Valid quantity (minimum 1) is required'
-              });
-          }
+        if (!quantity || quantity < 1) {
+            return res.status(400).json({
+                success: false,
+                message: 'Valid quantity (minimum 1) is required'
+            });
+        }
 
-          const numericQuantity = parseInt(quantity);
-          if (isNaN(numericQuantity)) {
-              return res.status(400).json({
-                  success: false,
-                  message: 'Quantity must be a valid number'
-              });
-          }
+        const numericQuantity = parseInt(quantity);
+        if (isNaN(numericQuantity)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Quantity must be a valid number'
+            });
+        }
 
-          // Calculate the price
-          const priceCalculation = await productService.calculateQuantityPrice(
-              productId.trim(), // Trim any whitespace
-              numericQuantity
-          );
+        // Calculate the price
+        const priceCalculation = await productService.calculateQuantityPrice(
+            productId.trim(), // Trim any whitespace
+            numericQuantity
+        );
 
-          res.status(200).json({
-              success: true,
-              data: priceCalculation
-          });
+        res.status(200).json({
+            success: true,
+            data: priceCalculation
+        });
 
-      } catch (error) {
-          console.error('Error in calculateQuantityPrice controller:', error);
-          
-          if (error.message.includes('Product not found')) {
-              return res.status(404).json({
-                  success: false,
-                  message: 'Product not found'
-              });
-          }
+    } catch (error) {
+        console.error('Error in calculateQuantityPrice controller:', error);
+        
+        if (error.message.includes('Product not found')) {
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found'
+            });
+        }
 
-          if (error.message.includes('Valid product ID')) {
-              return res.status(400).json({
-                  success: false,
-                  message: error.message
-              });
-          }
+        if (error.message.includes('Valid product ID')) {
+            return res.status(400).json({
+                success: false,
+                message: error.message
+            });
+        }
 
-          res.status(500).json({
-              success: false,
-              message: 'Failed to calculate quantity price',
-              error: process.env.NODE_ENV === 'development' ? error.message : undefined
-          });
-      }
-  });
+        res.status(500).json({
+            success: false,
+            message: 'Failed to calculate quantity price',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
 
   // Get products with quantity offers in a subcategory
   export const getProductsWithQuantityOffers = asyncHandler(async (req, res) => {
@@ -768,8 +777,8 @@ export const getRelatedProducts = asyncHandler(async (req, res) => {
   });
 
   // Calculate prices for cart items
-export const calculateCartPrices = asyncHandler(async (req, res) => {
-    const { items, isWholesaleUser } = req.body;
+  export const calculateCartPrices = asyncHandler(async (req, res) => {
+    const { items } = req.body;
 
     if (!items || !Array.isArray(items)) {
       return res.status(400).json({
@@ -778,7 +787,7 @@ export const calculateCartPrices = asyncHandler(async (req, res) => {
       });
     }
 
-    const cartCalculation = await productService.calculateCartPrices(items, isWholesaleUser);
+    const cartCalculation = await productService.calculateCartPrices(items);
 
     res.status(200).json({
       success: true,
@@ -794,4 +803,51 @@ export const calculateCartPrices = asyncHandler(async (req, res) => {
       success: true,
       data: subcategories
     });
+  });
+
+  // Update variant codes for a specific color (Admin only)
+  export const updateVariantCodes = asyncHandler(async (req, res) => {
+    const { productId, color } = req.params;
+    const { variantCodes } = req.body;
+
+    if (!variantCodes) {
+      return res.status(400).json({
+        success: false,
+        message: 'Variant codes are required'
+      });
+    }
+
+    // Ensure variantCodes is an array
+    const codesArray = Array.isArray(variantCodes) 
+      ? variantCodes 
+      : typeof variantCodes === 'string' 
+        ? variantCodes.split(',').map(code => code.trim())
+        : [];
+
+    if (codesArray.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one variant code is required'
+      });
+    }
+
+    try {
+      const result = await productService.updateVariantCodes(
+        productId,
+        color,
+        codesArray
+      );
+
+      res.status(200).json({
+        success: true,
+        message: 'Variant codes updated successfully',
+        data: result
+      });
+    } catch (error) {
+      logger.error('Error updating variant codes:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
   });
