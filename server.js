@@ -2,6 +2,32 @@ import app from './src/app.js';
 import { PORT, NODE_ENV } from './src/config/index.js';
 import prisma from './src/config/database.js';
 import logger from './src/utils/logger.js';
+import bcrypt from 'bcryptjs';
+
+const createAdminIfNotExists = async () => {
+  const existingAdmin = await prisma.user.findFirst({
+    where: { email: process.env.ADMIN_EMAIL }
+  });
+
+  if (!existingAdmin) {
+    const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+
+    await prisma.user.create({
+      data: {
+        email: process.env.ADMIN_EMAIL,
+        password: hashedPassword,
+        name: "Super Admin",
+        role: "ADMIN",
+        isActive: true,
+        isApproved: true
+      }
+    });
+
+    logger.info("✅ Admin user created");
+  } else {
+    logger.info("ℹ️ Admin already exists");
+  }
+};
 
 // Test database connection on startup
 async function startServer() {
@@ -10,6 +36,7 @@ async function startServer() {
     await prisma.$queryRaw`SELECT 1`;
     logger.info('✅ Database connection established successfully');
 
+    await createAdminIfNotExists();
     // Start server
     app.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
