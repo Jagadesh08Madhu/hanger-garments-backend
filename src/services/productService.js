@@ -801,7 +801,7 @@ class ProductService {
                     size: size.trim(),
                     stock: parseInt(stock) || 0,
                     sku: sku || null,
-                    variantCodes: sanitizedVariantCodes, // ✅ Add variantCodes at variant level (shared by all sizes of same color)
+                    variantCodes: sanitizedVariantCodes.length > 0 ? sanitizedVariantCodes : null, // ✅ Add variantCodes at variant level (shared by all sizes of same color)
                     variantImages: {
                         create: variantImagesData
                     }
@@ -1182,7 +1182,7 @@ class ProductService {
                         size: size.trim(),
                         stock: parseInt(stock) || 0,
                         sku: sku || null,
-                        variantCodes: sanitizedVariantCodes, // ✅ Use COLOR level variantCodes for all sizes
+                        variantCodes: sanitizedVariantCodes.length > 0 ? sanitizedVariantCodes : null, // ✅ Use COLOR level variantCodes for all sizes
                         variantImages: {
                             create: variantImagesData
                         }
@@ -1568,7 +1568,7 @@ class ProductService {
                 color: color
             },
             data: {
-                variantCodes: sanitizedVariantCodes,
+                variantCodes: sanitizedVariantCodes.length > 0 ? sanitizedVariantCodes : null,
                 updatedAt: new Date()
             }
         });
@@ -1594,7 +1594,7 @@ class ProductService {
             success: true,
             message: `Updated variant codes for ${updatedVariants.count} variants`,
             color: color,
-            variantCodes: sanitizedVariantCodes,
+            variantCodes: sanitizedVariantCodes.length > 0 ? sanitizedVariantCodes : null,
             variants: result
         };
     }
